@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Adventure Game</title>
+    <link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet">
+    <link href="styles/main.css" rel="stylesheet">
+    <script src="scripts/gamedata.js"></script>
+    <style>
+        audio{display:none;}
+    </style>
+</head>
+<body>
+<div id="gridContainer"></div>
+<h1>Adventure<br>Game!</h1>
+<h2>Current Health: <span id="healthDisplay">100%</span></h2>
+<audio id="effectAudio" src="sounds/grunt.wav" controls></audio>
+<div id="gameOverMessage">YOU DIED!</div>"
+<div id="gameWinMessage">YOU WON!</div>
+<p>Use Arrow Keys to move.<br>
+Use A and D to attack after attaining the sword.
+</p>
+
+<script>
+"use strict";
+
+// I. VARIABLES
+const cellWidth = 32;
+const cellSpacing = 0;
+const container = document.querySelector("#gridContainer");
+const cells = []; // the HTML elements - our "view"
+
+// faking an enumeration here
+const keyboard = Object.freeze({
+	SHIFT:     16,
+  	SPACE:     32,
+  	LEFT:      37,
+  	UP:        38,
+  	RIGHT:     39,
+  	DOWN:      40,
+  	INTERACT:  69,
+  	ATTLEFT:   83,
+  	ATTRIGHT:  68
+});
+
+// this is an enumeration for gameworld levels
+const worldTile = Object.freeze({
+  	FLOOR:     0,
+  	WALL:      1,
+  	GRASS:     2,
+  	WATER:     3,
+  	GROUND:    4,
+  	MDOOR:     5,
+  	BDOOR:     6,
+  	RDOOR:     7
+});
+
+// the "grunt" sound that plays when the player attempts to move into a wall or water square
+let effectAudio = undefined;
+
+// level data is over in gamedata.js
+let currentLevelNumber = 1;
+let currentGameWorld = undefined;   // a 2D array - the grid:  walls, floors, water, etc...
+let currentGameObjects = undefined; // a 1D array - stuff that's on top of the grid and can move: monsters, treasure, keys, etc...
+let gameOver = false;               // Used to track if the players current health means the game is over
+
+// II. PLAYER ES6 CLASS
+class Player
+{
+	constructor()
+	{
+		this.x = -1;
+    	this.y = -1;
+    	this.element = undefined;
+    	this.health = 2;
+    	this.swordAttained = false;
+    	this.masterKey = false;
+    	this.blueKey = false;
+    	this.redKey = false;
+	}
+
+  	moveRight() { this.x++; }
+  	moveDown() { this.y++; }
+  	moveLeft() { this.x--; }
+  	moveUp() { this.y--; }
+}
+
+// Instantiate new player from player class
+const player = new Player();
+
+// III. INIT code
+window.onload = () => {
+  	currentGameWorld = gameworld["world" + currentLevelNumber];
+  	let numCols = currentGameWorld[0].length;
+  	let numRows = currentGameWorld.length;
+  	createGridElements(numRows, numCols);
+  	drawGrid(currentGameWorld);
+  	loadLevel(currentLevelNumber);
+  	drawGameObjects(currentGameObjects);
+  	effectAudio = document.querySelector("#effectAudio");
+  	effectAudio.volume = 0.2;
+  	setupEvents();
+}
+
+// IV. FUNCTIONS
+function createGridElements(numRows, numCols)
+{
+  	const span = document.createElement('span');
+  	span.className = 'cell';
+  	for (let row = 0; row < numRows; row++)
+	{
+    	cells.push([]);
+    	for (let col = 0; col < numCols; col++)
+		{
+      		let cell = span.cloneNode();
+      		cell.style.left = `${col * (cellWidth + cellSpacing)}px`;
+      		cell.style.top = `${row * (cellWidth + cellSpacing)}px`;
+      		container.appendChild(cell);
+      		cells[row][col] = cell;
+    	}
+  	}
+}
+
+function loadLevel(levelNum) {
+  	currentGameObjects = []; // clear out the old array
+  	const node = document.createElement("span");
+  	node.className = "gameObject";
+
+  	// Initialize our player
+  	player.x = 1;
+  	player.y = 1;
+  	player.element = node.cloneNode(true);
+  	player.element.classList.add("player");
+  	container.appendChild(player.element);
+
+  	/* let's instantiate our game objects */
+  	// Pull the current level data
+  	const levelObjects = allGameObjects["level" + levelNum];
+  
+  	// Loop through this level's objects
+  	for (let obj of levelObjects) {
+    	const clone = Object.assign({}, obj);   // clone the object
+    	clone.element = node.cloneNode(true);   // clone the element
+    	clone.element.classList.add(obj.className); // add the className so we see the right image
+    	currentGameObjects.push(clone);         // add to currentGameObjects array  (so it gets moved onto the map)
+    	container.appendChild(clone.element);   // add to DOM tree (so we can see it!)
+  	}
+
+  	setInterval(monsterMoveRandom, 3000);
+}
+
+function drawGrid(array)
+{
+  	const numCols = array[0].length;
+  	const numRows = array.length;
+  	for (let row = 0; row < numRows; row++)
+	{
+    	for (let col = 0; col < numCols; col++)
+		{
+      		const tile = array[row][col];
+      		const element = cells[row][col];
+      
+      		switch (tile)
+			{
+        		case worldTile.FLOOR:
+          		element.classList.add("floor");
+          		break;
+
+        		case worldTile.WALL:
+          		element.classList.add("wall");
+          		break;
+
+        		case worldTile.GRASS:
+          		element.classList.add("grass");
+          		break;
+
+        		case worldTile.WATER:
+          		element.classList.add("water");
+          		break;
+
+        		case worldTile.GROUND:
+          		element.classList.add("ground");
+          		break;
+
+        		case worldTile.MDOOR:
+          		element.classList.add("mdoor");
+          		break;
+
+        		case worldTile.BDOOR:
+          		element.classList.add("bdoor");
+          		break;
+
+        		case worldTile.RDOOR:
+          		element.classList.add("rdoor");
+          		break;
+      		}
+    	}
+  	}
+}
+
+function drawGameObjects(array)
+{
+  	// player
+  	player.element.style.left = `${player.x * (cellWidth + cellSpacing)}px`;
+  	player.element.style.top = `${player.y * (cellWidth + cellSpacing)}px`;
+  
+  	// game object
+  	for (let gameObject of array) {
+    	gameObject.element.style.left = `${gameObject.x * (cellWidth + cellSpacing)}px`;
+    	gameObject.element.style.top = `${gameObject.y * (cellWidth + cellSpacing)}px`;
+  	}
+}
+
+function checkIsLegalMove(nextX,nextY) //Checks if the next move for the plyer is allowed
+{
+	let nextTile = currentGameWorld[nextY][nextX];
+	if (nextTile != worldTile.WALL && nextTile != worldTile.WATER){
+		if (nextTile === worldTile.BDOOR) //Allows passing when blue key is in hand
+		{
+			if (player.blueKey === true)
+			{
+				player.blueKey = false;
+				return true;
+			}
+
+			else if (player.blueKey === false)
+			{
+				return false;
+			}
+		}
+
+		else if (nextTile === worldTile.RDOOR) //Allows passing when red key is in hand
+		{
+			if (player.redKey === true)
+			{
+				player.redKey = false;
+				return true;
+			}
+
+			else if (player.redKey === false)
+			{
+				return false;
+			}
+		}
+
+		else if (nextTile === worldTile.MDOOR) //Allows moving into the next level through switchWorld function
+		{
+			switchWorld();
+		}
+		return true;
+	}
+	else // grunt audio played if cannot move
+	{ 
+		effectAudio.play();
+		return false;
+	}
+}
+
+function checkIsLegalMoveMonster(nextX,nextY) // checks for a legal move for monsters. Does not allow passing through doors
+{
+	let nextTile = currentGameWorld[nextY][nextX];
+	if (nextTile != worldTile.WALL && nextTile != worldTile.WATER && nextTile != worldTile.MDOOR && nextTile != worldTile.BDOOR && nextTile != worldTile.RDOOR){
+		return true;
+	}
+	else{
+		effectAudio.play();
+		return false;
+	}
+}
+
+function movePlayer(e) // moves the player from keyboard press when called from onKeyboardDown
+{
+	if (gameOver) return;
+
+  	let nextX;
+  	let nextY;
+  	switch (e.keyCode)
+	{
+    	case keyboard.RIGHT:
+      	nextX = player.x + 1;
+      	nextY = player.y;
+      	if (checkIsLegalMove(nextX, nextY)) player.moveRight();
+      	break;
+
+    	case keyboard.DOWN:
+      	nextX = player.x;
+      	nextY = player.y + 1;
+      	if (checkIsLegalMove(nextX, nextY)) player.moveDown();
+      	break;
+
+    	case keyboard.LEFT:
+      	nextX = player.x - 1;
+      	nextY = player.y;
+      	if (checkIsLegalMove(nextX, nextY)) player.moveLeft();
+      	break;
+
+    	case keyboard.UP:
+      	nextX = player.x;
+      	nextY = player.y - 1;
+      	if (checkIsLegalMove(nextX, nextY)) player.moveUp();
+      	break;
+  	}
+
+  	playerCollision();
+  	monsterMoveChaseY();
+}
+
+//
+//All new functions added the the code
+//Not all the new code, modified code is till in their original placement
+//
+
+function playerAttack(e) // constrols player attack when sword is attained and when called from onKeyboardDown
+{
+	if (gameOver) return;
+	if (player.swordAttained === true)
+	{
+		let attX;
+		let attY;
+		switch(e.keyCode)
+		{
+			case keyboard.ATTRIGHT:
+			attX = player.x + 1;
+			attY = player.y;
+			checkAttack(attX, attY);
+			break;
+
+			case keyboard.ATTLEFT:
+			attX = player.x - 1;
+			attY = player.y;
+			checkAttack(attX, attY);
+			break;
+		}
+	}
+}
+
+function checkAttack(attackX, attackY) //checks if the attack is legal
+{
+	for (let i = 0; i < currentGameObjects.length; i++)
+	{
+        let gameObject = currentGameObjects[i];
+        
+        if (gameObject.className.includes("monster") && gameObject.x === attackX && gameObject.y === attackY)
+		{
+            currentGameObjects.splice(i, 1);
+            gameObject.element.remove();
+
+            break;
+        }
+    }
+}
+
+function monsterMoveRandom() //controls the random monster movement
+{
+	if (gameOver) return;
+	for (let gameObject of currentGameObjects)
+	{
+		if (gameObject.className.includes("monster1"))
+		{	
+			let monsterX = gameObject.x;
+			let monsterY = gameObject.y;
+
+			let move = Math.floor(Math.random() * 4);
+			let nextX = monsterX;
+			let nextY = monsterY;
+
+			switch(move)
+			{
+				case 0:
+				nextY -= 1;
+				break;
+
+				case 1:
+				nextY += 1;
+				break;
+
+				case 2:
+				nextX -= 1;
+				break;
+
+				case 3:
+				nextX += 1;
+				break;
+			}
+
+			if (checkIsLegalMoveMonster(nextX, nextY) === true)
+			{
+				gameObject.x = nextX;
+				gameObject.y = nextY;
+
+				gameObject.element.style.left = `${nextX * (cellWidth + cellSpacing)}px`;
+				gameObject.element.style.top = `${nextY * (cellWidth + cellSpacing)}px`;
+
+				playerCollision();
+			}
+
+			//Code can be improved to make sure monsters don't move in a direction they can't stopping from moving that turn
+			/*else if (checkIsLegalMoveMonster(nextX, nextY) === false)
+			{
+				monsterMoveRandom()
+			}*/
+		}
+	}
+}
+
+function monsterMoveChaseY() // monster movement that chases player, priortizes vertical movement, calls horizontal movement if it cant move
+{
+	if (gameOver) return;
+	for (let gameObject of currentGameObjects)
+	{
+		if (gameObject.className.includes("monster3"))
+		{	
+			let monsterX = gameObject.x;
+			let monsterY = gameObject.y;
+
+			let nextX = monsterX;
+			let nextY = monsterY;
+
+			if (nextY != player.y)
+			{
+				if (nextY > player.y)
+				{
+					if (checkIsLegalMoveMonster(nextX, nextY - 1) === true)
+					{
+						nextY -= 1;
+						gameObject.x = nextX;
+						gameObject.y = nextY;
+
+						gameObject.element.style.left = `${nextX * (cellWidth + cellSpacing)}px`;
+						gameObject.element.style.top = `${nextY * (cellWidth + cellSpacing)}px`;
+
+						playerCollision();
+					}
+
+					else if (checkIsLegalMoveMonster(nextX, nextY - 1) != true)
+					{ 
+						monsterMoveChaseX();
+					}
+				}
+
+				else
+				{
+					if (checkIsLegalMoveMonster(nextX, nextY + 1) === true)
+					{
+						nextY += 1;
+						gameObject.x = nextX;
+						gameObject.y = nextY;
+
+						gameObject.element.style.left = `${nextX * (cellWidth + cellSpacing)}px`;
+						gameObject.element.style.top = `${nextY * (cellWidth + cellSpacing)}px`;
+
+						playerCollision();
+					}
+
+					else if (checkIsLegalMoveMonster(nextX, nextY + 1) != true)
+					{ 
+						monsterMoveChaseX();
+					}
+				}
+			}
+
+			else if (nextY != player.x)
+			{ 
+				monsterMoveChaseX();
+			}
+		}
+	}
+}
+
+function monsterMoveChaseX() // monster chase movement, horizontal movement is secondary, code allows monster to bypass walls if vertical blocking
+{
+	for (let gameObject of currentGameObjects)
+	{
+		if (gameObject.className.includes("monster3"))
+		{	
+			let monsterX = gameObject.x;
+			let monsterY = gameObject.y;
+
+			let nextX = monsterX;
+			let nextY = monsterY;
+
+			if (nextX != player.x)
+			{
+				if (nextX > player.x)
+				{
+					nextX -= 1;
+					if (checkIsLegalMoveMonster(nextX, nextY) === true)
+					{
+						gameObject.x = nextX;
+						gameObject.y = nextY;
+
+						gameObject.element.style.left = `${nextX * (cellWidth + cellSpacing)}px`;
+						gameObject.element.style.top = `${nextY * (cellWidth + cellSpacing)}px`;
+
+						playerCollision();
+					}
+				}
+
+				else
+				{
+					nextX += 1;
+					if (checkIsLegalMoveMonster(nextX, nextY) === true)
+					{
+						gameObject.x = nextX;
+						gameObject.y = nextY;
+
+						gameObject.element.style.left = `${nextX * (cellWidth + cellSpacing)}px`;
+						gameObject.element.style.top = `${nextY * (cellWidth + cellSpacing)}px`;
+
+						playerCollision();
+					}
+				}
+			}
+		}
+	}
+}
+
+function removeGameObjects() // used to remove all current objects when switching level
+{
+	player.element.style.left = null;
+	player.element.style.top = null;
+
+	for (let gameObject of currentGameObjects)
+	{
+		gameObject.element.style.left = null;
+		gameObject.element.style.top = null;
+	}
+}
+
+function switchWorld() // switches world under current conditions
+{
+	if (player.masterKey === true)
+	{
+		if (currentLevelNumber === 3)
+		{
+			gameWinF();
+		}
+		player.swordAttained = false;
+		currentLevelNumber += 1;
+		removeGameObjects();
+		window.onload();
+		player.x = 1;
+		player.y = 1;
+	}
+}
+
+function gameOverF() // calls gameover bool and displays loss message
+{
+	gameOver = true;
+    document.getElementById("gameOverMessage").style.display = "block";
+}
+
+function gameWinF() // calls gameover bool and displays win message
+{
+	gameOver = true;
+	document.getElementById("gameWinMessage").style.display = "block";
+}
+
+function swordPickup() // allows attacking and sword pickup function
+{
+	player.swordAttained = true;
+	for (let i = 0; i < currentGameObjects.length; i++)
+	{
+        let gameObject = currentGameObjects[i];
+        
+        if (gameObject.className.includes("sword") && gameObject.x === player.x && gameObject.y === player.y)
+		{
+            currentGameObjects.splice(i, 1);
+            gameObject.element.remove();
+
+            break;
+        }
+    }
+}
+
+function masterKeyPickup() // master key pickup
+{
+	player.masterKey = true;
+	for (let i = 0; i < currentGameObjects.length; i++)
+	{
+        let gameObject = currentGameObjects[i];
+        
+        if (gameObject.className.includes("mkey") && gameObject.x === player.x && gameObject.y === player.y)
+		{
+            currentGameObjects.splice(i, 1);
+            gameObject.element.remove();
+
+            break;
+        }
+    }
+}
+
+function blueKeyPickup() // blue key pickup
+{
+	player.blueKey = true;
+	for (let i = 0; i < currentGameObjects.length; i++)
+	{
+        let gameObject = currentGameObjects[i];
+        
+        if (gameObject.className.includes("bkey") && gameObject.x === player.x && gameObject.y === player.y)
+		{
+            currentGameObjects.splice(i, 1);
+            gameObject.element.remove();
+
+            break;
+        }
+    }
+}
+
+function redKeyPickup() // red key pickup
+{
+	player.redKey = true;
+	for (let i = 0; i < currentGameObjects.length; i++)
+	{
+        let gameObject = currentGameObjects[i];
+        
+        if (gameObject.className.includes("rkey") && gameObject.x === player.x && gameObject.y === player.y)
+		{
+            currentGameObjects.splice(i, 1);
+            gameObject.element.remove();
+
+            break;
+        }
+    }
+}
+
+function updateHealthDisplay() // updates the html health percentage
+{
+	const healthDisplay = document.querySelector("#healthDisplay");
+	const healthPercentage = Math.max(0, (player.health / 2) * 100);
+	healthDisplay.textContent = `${healthPercentage}%`;
+}
+
+function healthPickup() // handles health potion pickup and increases health
+{
+	if (player.health < 3)
+	{
+		player.health += 1;
+		updateHealthDisplay();
+
+		for (let i = 0; i < currentGameObjects.length; i++)
+		{
+        	let gameObject = currentGameObjects[i];
+        
+        	if (gameObject.className.includes("potion") && gameObject.x === player.x && gameObject.y === player.y)
+			{
+            	currentGameObjects.splice(i, 1);
+            	gameObject.element.remove();
+            	break;
+        	}
+    	}
+	}
+}
+
+function playerDamage() // subtracts player health on collision
+{
+	player.health -= 1;
+	effectAudio.play();
+	updateHealthDisplay();
+	if (player.health <= 0)
+	{
+		gameOverF();
+	}
+}
+
+function playerCollision() // handles collision between player and objects
+{
+	for (let gameObject of currentGameObjects)
+	{
+		if (gameObject.className.includes("monster"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				playerDamage();
+			}
+		}
+
+		else if (gameObject.className.includes("potion"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				healthPickup();
+			}
+		}
+
+		else if (gameObject.className.includes("sword"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				swordPickup();
+			}
+		}
+
+		else if (gameObject.className.includes("mkey"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				masterKeyPickup();
+			}
+		}
+
+		else if (gameObject.className.includes("bkey"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				blueKeyPickup();
+			}
+		}
+
+		else if (gameObject.className.includes("rkey"))
+		{
+			if (gameObject.x === player.x && gameObject.y === player.y)
+			{
+				redKeyPickup();
+			}
+		}
+	}
+}
+
+
+// IV. EVENTS
+function setupEvents(){
+	window.onmouseup = (e) => {
+		e.preventDefault();
+		gridClicked(e);
+	};
+	
+	window.onkeydown = (e)=>{
+		var char = String.fromCharCode(e.keyCode);
+		var key = e.keyCode;
+		if (key === 37 || key === 38 || key === 39 || key === 40)
+		{
+			movePlayer(e);
+		}
+		playerAttack(e);
+		drawGameObjects(currentGameObjects);
+	};
+}
+
+function gridClicked(e){
+	let rect = container.getBoundingClientRect();
+	let mouseX = e.clientX - rect.x;
+	let mouseY = e.clientY - rect.y;
+	let columnWidth = cellWidth+cellSpacing;
+	let col = Math.floor(mouseX/columnWidth);
+	let row = Math.floor(mouseY/columnWidth);
+	let selectedCell = cells[row][col];
+	console.log(`${col},${row}`);
+}
+
+</script>
+
+</body>
+</html>
